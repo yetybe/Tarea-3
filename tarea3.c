@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 typedef struct {
     char nombre[100];
@@ -11,14 +12,14 @@ typedef struct {
     int peso;
 } Item;
 
-typedef struct {
+typedef struct Nodo {
+    char descripcion[100];
     int id;
     char nombre[100];
-    char descripcion[100];
     int final;
     List *Items;
-    int arriba, abajo, izquierda, derecha; 
-} Escenario;
+    Map *vecinos;
+} Nodo;
 
 typedef struct {
     List *Items;
@@ -28,8 +29,8 @@ typedef struct {
 } Jugador;
 
 typedef struct{
-    Escenario *current_scene;
-    Jugador *current_player;
+    Nodo *current;
+    Jugador *Jugador;
 } EstadoJuego;
 
 void mostrarMenuPrincipal() {
@@ -38,9 +39,7 @@ void mostrarMenuPrincipal() {
   puts("========================================");
   puts("1) Cargar Laberinto");
   puts("2) Iniciar Partida");
-  puts("3) Buscar Escenario");
-  puts("4) Ver estado jugador");
-  puts("5) Salir");
+  puts("3) Salir");
 }
 
 /**
@@ -55,264 +54,304 @@ void leer_escenarios(Map *grafo) {
   }
   leer_linea_csv(archivo, ',');
   char **campos;
-  // Leer y parsear una línea del archivo CSV. La función devuelve un array de
-  // strings, donde cada elemento representa un campo de la línea CSV procesada.
-  //leer_linea_csv(archivo, ','); // Lee los encabezados del CSV
+  Map *referencias = map_create();
 
-
-  // Lee cada línea del archivo CSV hasta el final
   while ((campos = leer_linea_csv(archivo, ',')) != NULL) {
-    Escenario *newEscenario = malloc(sizeof(Escenario));
-    newEscenario->id = atoi(campos[0]);
-    strcpy(newEscenario->nombre, campos[1]);
-    strcpy(newEscenario->descripcion, campos[2]);
-    newEscenario->items = list_create();
-    newEscenario->arriba = atoi(campos[4]);
-    newEscenario->abajo = atoi(campos[5]);
-    newEscenario->izquierda = atoi(campos[6]);
-    newEscenario->derecha = atoi(campos[7]);
-    newEscenario->final = atoi(campos[8]);
+    Nodo *newNodo = malloc(sizeof(Nodo));
+    newNodo->id = atoi(campos[0]);
+    strcpy(newNodo->nombre, campos[1]);
+    strcpy(newNodo->descripcion, campos[2]);
+    newNodo->Items = list_create();
+    newNodo->vecinos = map_create();
+    newNodo->final = atoi(campos[5]);
 
-    /*printf("ID: %d\n", atoi(campos[0]));
-    printf("Nombre: %s\n", campos[1]);
-    printf("Descripción: %s\n", campos[2]);*/
 
-    List* itemsRaw = split_string(campos[3], ";");
-
-    //printf("Items: \n");
+    List *itemsRaw = split_string(campos[3], ";");
     for(char *itemStr = list_first(itemsRaw); itemStr != NULL; 
         itemStr = list_next(itemsRaw)){
 
-        List* values = split_string(itemStr, ",");
+        List *values = split_string(itemStr, ",");
         Item *new_item = malloc(sizeof(Item));
 
         strcpy(new_item->nombre, list_first(values));
         new_item->valor = atoi(list_next(values));
         new_item->peso = atoi(list_next(values));
 
-        list_pushBack(newEscenario->Items,new_item)
+        list_pushBack(newNodo->Items,new_item);
         list_clean(values);
         free(values);
     }
     list_clean(itemsRaw);
     free(itemsRaw);
 
-    /*if (arriba != -1) printf("Arriba: %d\n", arriba);
-    if (abajo != -1) printf("Abajo: %d\n", abajo);
-    if (izquierda != -1) printf("Izquierda: %d\n", izquierda);
-    if (derecha != -1) printf("Derecha: %d\n", derecha);*/
-
-    list_pushBack(all_escenarios, newEscenario);
+    
     int *key = malloc(sizeof(int));
-    *key = newEscenario->id;
-    map_insert(grafo,key,newEscenario);
-    /*int is_final = atoi(campos[8]);
-    if (is_final) printf("Es final\n");*/
+    *key = newNodo->id;
+    map_insert(grafo,key,newNodo);
+    map_insert(referencias,key,strdup(campos[4]));
   }
+
+  Pair *p = map_first(grafo);
+  while(p){
+    Nodo *n = p->value;
+    int id = *(int *)p->key;
+    char *conns = map_search(referencias, &id);
+    List *dirList = split_string(conns, ";");
+
+    for (char *d = list_first(dirList); d; d = list_next(dirList)) {
+        char *dir = strtok(d, ":");
+        int dest = atoi(strtok(NULL, ":"));
+        Nodo *vecino = map_search(grafo, &dest);
+        if (vecino && dir)
+            map_insert(n->vecinos, strdup(dir), vecino);
+    }
+    list_clean(dirList);
+    free(dirList);
+    p = map_next(grafo);
+  }
+
+  map_clean(referencias);
+  free(referencias);
+  map_clean(grafo);
+  free(grafo);
   fclose(archivo); // Cierra el archivo después de leer todas las líneas
 }
 
 
 //Cada vez que se entra a un nuevo escenario o se realiza una acción, se muestra el siguiente menú:
-void mostrar_estado_actual(Escenario *newEsc, Jugador *player){
-    printf("\n===== Escenario: %s =====\n", newEsc->nombre);
-    printf("Descripcion escenario: %s\n", newEsc->descripcion);
-    printf("Items disponibles en escenario: \n");
+void mostrar_estado_actual(EstadoJuego *est_jug){
+    printf("\n===== Escenario: %s =====\n", est_jug->current->nombre);
+    printf("Descripcion escenario: %s\n", est_jug->current->descripcion);
+    printf("Inventario.\n");
 
-    if(list_size(newEsc->Items) == 0){
+    if(list_size(est_jug->Jugador->Items) == 0){
         printf("No hay items disponibles :(\n");
     } else {
+        Item *item = list_first(est_jug->Jugador->Items);
         int i = 1;
-        Item *item = list_first(newEsc->Items);
-        while (item != NULL){
+        while (item ){
             printf(" N° %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
             printf("===============================\n");
-            item = list_next(newEsc->Items);
+            item = list_next(est_jug->Jugador->Items);
             i++;
         } 
 
     }
-    printf("Direcciones disponibles:\n");
-    if (newEsc->arriba != -1) printf(" Arriba: %d\n", newEsc->arriba);
-    if (newEsc->abajo != -1) printf(" Abajo: %d\n", newEsc->abajo);
-    if (newEsc->izquierda != -1) printf(" Izquierda: %d\n", newEsc->izquierda);
-    if (newEsc->derecha != -1) printf(" Derecha: %d\n", newEsc->derecha);
 
-    printf("\n===== Estado del Jugador =====\n");
-    printf("Tiempo restante: %d\n", player->tiempo);
-    printf("Puntaje acumulado: %d\n", player->puntuacion);
-    printf("Peso total: %d\n", player->pesoTotal);
-
-    
-    if(list_size(player->Items) == 0){
+    printf("Items disponibles en escenario: \n");
+    if(list_size(est_jug->current->Items) == 0){
         printf("Inventario vacio :0\n");
     } else {
-        printf("Inventario:\n");
+        Item *item = list_first(est_jug->current->Items);
         int i = 1;
-        Item *item = list_first(player->Items);
-        while (item != NULL){
+        while (item){
             printf(" N° %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
             printf("===============================\n");
-            item = list_next(player->Items);
+            item = list_next(est_jug->current->Items);
             i++;
         } 
 
     }
+
+    printf("\n===== Estado del Jugador =====\n");
+    printf("Tiempo restante: %d\n", est_jug->Jugador->tiempo);
+    printf("Puntaje acumulado: %d\n", est_jug->Jugador->puntuacion);
+    printf("Peso total: %d\n", est_jug->Jugador->pesoTotal);
+
+    MapIterator it = map_iterator(est_jug->current->vecinos);
+    while(map_iterator_hasNext(&it)){
+        char *dir = map_iterator_next(&it);
+        printf(" - %s\n", dir);
+    }   
 }
 
-void recoger_items(Escenario *newEsc, Jugador *player){
-    if(list_size(newEsc->Items) == 0){
+void recoger_items(EstadoJuego *estado){
+    if(list_size(estado->current->Items) == 0){
         printf("No hay items para recoger en escenario.\n");
         return;
     } 
     printf("Items para recoger en escenario: \n");
     int i = 1;
-    Item *item = list_first(newEsc->Items);
+    Item *item = list_first(estado->current->Items);
     while (item != NULL){
         printf(" N° %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
         printf("===============================\n");
-        item = list_next(newEsc->Items);
+        item = list_next(estado->current->Items);
         i++;
     } 
     printf("Ingrese numero item recoger: \n");
     int opcion;
     scanf("%d", &opcion);
     getchar();
-    if(opcion <= 0 || opcion > list_size(newEsc->Items)){
+    if(opcion <= 0 || opcion > list_size(estado->current->Items)){
         printf("Numero invalido.\n");
         return;
     }
-    item = list_first(newEsc->Items);
+    Item *item = list_first(estado->current->Items);
     for(int i = 1; i < opcion; i++){
-        item = list_next(newEsc->Items);
+        item = list_next(estado->current->Items);
     }
 
     Item *nuevo_item = malloc(sizeof(Item));
     *nuevo_item = *item;
-    list_pushBack(player->Items, nuevo_item);
 
-    player->pesoTotal += item->peso;
-    player->puntuacion += item->valor;
-    player->tiempo -= 1;
+    list_pushBack(estado->Jugador->Items, nuevo_item);
 
-    list_clean(newEsc->Items, opcion - 1);
+    estado->Jugador->pesoTotal += nuevo_item->peso;
+    estado->Jugador->puntuacion += nuevo_item->valor;
+    estado->Jugador->tiempo -= 1;
+
+    list_popCurrent(estado->current->Items);
     printf("Item %s recogido.\n", item->nombre);
 }
 
-void descartar_items(Jugador *player){
-    if(list_size(player->Items) == 0){
+void descartar_items(EstadoJuego *estado){
+    if(list_size(estado->Jugador->Items) == 0){
         printf("No hay items para descartar.\n");
         return;
     } 
     printf("Items inventario: \n");
     int i = 1;
-    Item *item = list_first(player->Items);
+    Item *item = list_first(estado->Jugador->Items);
     while (item != NULL){
         printf(" N° %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
         printf("===============================\n");
-        item = list_next(player->Items);
+        item = list_next(estado->Jugador->Items);
         i++;
     } 
-    printf("Ingrese numero item recoger: \n");
+    printf("Ingrese numero item descartar: \n");
     int opcion;
     scanf("%d", &opcion);
     getchar();
-    if(opcion <= 0 || opcion > list_size(player->Items)){
-        printf("Numero invalido.\n");
+    if(opcion <= 0 || opcion > list_size(estado->Jugador->Items)){
+        printf("Item invalido.\n");
         return;
     }
-    item = list_first(player->Items);
+    Item *item = list_first(estado->Jugador->Items);
     for(int i = 1; i < opcion; i++){
-        item = list_next(player->Items);
+        item = list_next(estado->Jugador->Items);
     }
+    estado->Jugador->pesoTotal -= item->peso;
+    estado->Jugador->puntuacion -= item->valor;
+    estado->Jugador->tiempo -= 1;
 
-    player->pesoTotal -= item->peso;
-    player->puntuacion -= item->valor;
-    player->tiempo -= 1;
+    char guardar[100];
+    strcpy(guardar,item->nombre);
 
-    Item *eliminar = list_clean(player->Items, opcion - 1);
-    free(eliminar);
-    printf("Item descartado.\n");
+    list_popCurrent(estado->Jugador->Items);
+    free(item);
+    printf("Item %s descartado.\n", item->nombre);
 }
 
-void mover(Map *grafo, EstadoJuego *estado, char *comprobar){
-    int new_id = -1;
-    if(strcmp(comprobar, "arriba") == 0){
-        new_id = estado->current_scene->arriba;
-    } else if(strcmp(comprobar, "abajo") == 0){
-        new_id = estado->current_scene->abajo;
-    } else if(strcmp(comprobar, "izquierda") == 0){
-        new_id = estado->current_scene->izquierda;
-    } else if(strcmp(comprobar, "derecha") == 0){
-        new_id = estado->current_scene->derecha;
-    } else {
+int calcular_tiempo(int peso){
+    return (peso + 9 ) / 10;
+}
+
+void mover(EstadoJuego *estado){
+    char direccion[50];
+    printf("Direccion (arriba,abajo,izquierda,derecha): ");
+    fgets(direccion,sizeof(direccion),stdin);
+    direccion[strcspn(direccion,"\n")] = 0;
+    
+    Nodo *vecino = map_search(estado->current->vecinos, direccion);
+    if(!vecino){
         printf("Direccion invalida.\n");
         return;
     }
-    if(new_id == -1){
-        printf("No hay escenario con ea direccion.\n");
+    int tiempo = calcular_tiempo(estado->Jugador->pesoTotal);
+    if(estado->Jugador->tiempo < tiempo ){
+        printf("No hay suficiente tiempo.\n");
         return;
     }
-    Escenario *new_esc = map_search(grafo, &new_id);
-    if(!new_id){
-        printf("Escenario destino no existe.\n");
-        return;
-    }
-    int tiempo = calcular_tiempo(estado->current_player->pesoTotal);
-    if(estado->current_player->tiempo - tiempo < 0){
-        printf("No hay suficiente.\n");
-        return;
-    }
-    estado->current_player->tiempo -= tiempo;
-    estado->current_scene = new_esc;
+    estado->Jugador->tiempo -= tiempo;
+    estado->current = vecino;
 
-    printf("Se movio a : %s\n", new_esc->nombre);
+    printf("Se movio a : %s\n", vecino->nombre);
 
-    if(new_esc->final){
+    if(vecino->final){
         printf("Escenario final!\n");
-        printf("Puntaje final: %d\n", estado->current_player->puntuacion);
-        printf("Inventario final:\n");
-        int i = 1;
-        Item *item = list_first(estado->current_player->Items);
-        while(item != NULL){
-            printf(" N° %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
-            printf("===============================\n");
-            item = list_next(estado->current_player>Items);
-            i++;
-        }
-        estado->current_player->tiempo = 0;
+        printf("Puntaje final: %d\n", estado->Jugador->puntuacion);
+        estado->Jugador->tiempo = 0;
 
-     }
-    
-
+    }
 }
 
-
-
-
-
-
-
-
-
-void iniciarPartida(Map *grafo, Escenario *inicio) {
-    int key = 0;
-    Escenario *inicio = map_search(grafo, &key);
-    if(!inicio){
-        printf("Escenario no encontrado.\n");
-        return;
-    }
+EstadoJuego *reiniciar(Nodo *inicio, EstadoJuego *currentPlay) {
+    
+    list_clean(currentPlay->Jugador->Items);
+    free(currentPlay->Jugador->Items);
+    free(currentPlay->Jugador);
+    free(currentPlay);
+    
+    
+    EstadoJuego *estado = malloc(sizeof(EstadoJuego));
     Jugador *player = malloc(sizeof(Jugador));
-    player->items = list_create();
+    player->Items = list_create();
     player->tiempo = 10;
     player->puntuacion = 0;
     player->pesoTotal = 0;
 
-    EstadoJuego estado;
-    estado.current_scene = inicio;
-    estado.current_player = player;
+    estado->Jugador = player;
+    estado->current = inicio;
+    return currentPlay;
+}
 
-    printf("Te encuntras en :");
+
+
+void iniciarPartida(Map *grafo, Nodo *inicio) {
+    Jugador *player = malloc(sizeof(Jugador));
+    player->Items = list_create();
+    player->tiempo = 10;
+    player->puntuacion = 0;
+    player->pesoTotal = 0;
+
+    EstadoJuego *estado = malloc(sizeof(EstadoJuego));
+    estado->current = inicio;
+    estado->Jugador = player;
+    int opcion;
+    int salir = 0;
+    while(!salir && player->tiempo > 0){
+        mostrar_estado_actual(estado);
+        //arreglar
+        //ver eso de listclean y listPop
+        printf("\nOpciones:\n1. Recoger Item\n2. Descartar Item\n3. Avanzar\n4. Reiniciar\n5. Salir\n");
+        scanf("%d",&opcion);
+        getchar();
+
+        switch (opcion) {
+            case 1:
+                 recoger_items(estado);
+                 break;
+            case 2:
+                descartar_items(estado);
+                break;
+            case 3: {
+                mover(estado);
+                if(estado->current->final){
+                    printf("Has llegado escenario final.\n");
+                    salir = 1;
+                }
+                break;
+            }
+            case 4:
+                estado = reiniciar(inicio,estado);
+                player = estado->Jugador;
+                break;
+            case 5:
+                salir = 1;
+                return;
+            default:
+                printf("Opcion no valida.\n");
+        }
+        if (estado.current->final){
+            break;
+        }
+    }
+    printf("Fin del juego. Tiempo agotado o final alcanzado.\n");
+    list_clean(player->Items);
+    free(player->Items);
+    free(player);
+    free(estado);
 }
 
 
@@ -320,9 +359,10 @@ void iniciarPartida(Map *grafo, Escenario *inicio) {
 
 int main() {
     Map *grafo = map_create();
-    List *all_escenarios = list_create();
-
+    Nodo *esc = NULL;
     int opcion;
+    printf("Ingresar opcion: \n");
+
     do {
         mostrarMenuPrincipal();
         scanf("%d", &opcion);
@@ -334,15 +374,45 @@ int main() {
                 printf("Laberinto cargado correctamente.\n");
                 break;
             case 2:
-                iniciarPartida(grafo);
+                if(!esc){
+                    int idI = 1;
+                    esc = map_search(grafo, &idI);
+                }
+                if(!esc){
+                    printf("No existe escenario incial.\n");
+                    break;
+                }
+                iniciarPartida(grafo,esc);
                 break;
-            case 5:
+            case 3:
                 printf("Saliendo del juego...\n");
                 break;
             default:
                 printf("Opcion no valida.\n");
         }
-    } while (opcion != 5);
+    } while (opcion != 3);
 
   return 0;
 }
+
+
+
+
+/*case 2:
+       printf("Ingrese ID escenario inical: ");
+       int id;
+       scanf("%d", &id);
+       getchar();
+       esc = map_search(grafo, &id);
+
+       if(!esc){
+          printf("No existe un escenario con ese ID.\n");
+          break;
+        }
+        iniciarPartida(grafo,esc);
+        break;
+
+
+
+
+*/
