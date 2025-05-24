@@ -42,6 +42,10 @@ void mostrarMenuPrincipal() {
   puts("3) Salir");
 }
 
+int int_equal(void *a, void *b) {
+    return (*(int *)a == *(int *)b);
+}
+
 /**
  * Carga canciones desde un archivo CSV
  */
@@ -54,7 +58,7 @@ void leer_escenarios(Map *grafo) {
   }
   leer_linea_csv(archivo, ',');
   char **campos;
-  Map *referencias = map_create();
+  Map *referencias = map_create(int_equal);
 
   while ((campos = leer_linea_csv(archivo, ',')) != NULL) {
     Nodo *newNodo = malloc(sizeof(Nodo));
@@ -62,7 +66,7 @@ void leer_escenarios(Map *grafo) {
     strcpy(newNodo->nombre, campos[1]);
     strcpy(newNodo->descripcion, campos[2]);
     newNodo->Items = list_create();
-    newNodo->vecinos = map_create();
+    newNodo->vecinos = map_create(int_equal);
     newNodo->final = atoi(campos[5]);
 
 
@@ -91,7 +95,7 @@ void leer_escenarios(Map *grafo) {
     map_insert(referencias,key,strdup(campos[4]));
   }
 
-  Pair *p = map_first(grafo);
+  MapPair *p = map_first(grafo);
   while(p){
     Nodo *n = p->value;
     int id = *(int *)p->key;
@@ -112,8 +116,6 @@ void leer_escenarios(Map *grafo) {
 
   map_clean(referencias);
   free(referencias);
-  map_clean(grafo);
-  free(grafo);
   fclose(archivo); // Cierra el archivo después de leer todas las líneas
 }
 
@@ -158,10 +160,10 @@ void mostrar_estado_actual(EstadoJuego *est_jug){
     printf("Puntaje acumulado: %d\n", est_jug->Jugador->puntuacion);
     printf("Peso total: %d\n", est_jug->Jugador->pesoTotal);
 
-    MapIterator it = map_iterator(est_jug->current->vecinos);
-    while(map_iterator_hasNext(&it)){
-        char *dir = map_iterator_next(&it);
-        printf(" - %s\n", dir);
+    MapPair *par = map_first(est_jug->current->vecinos);
+    while(par != NULL){
+        printf(" - %s\n", (char*)par->key);
+        par =map_next(est_jug->current->vecinos);
     }   
 }
 
@@ -173,7 +175,7 @@ void recoger_items(EstadoJuego *estado){
     printf("Items para recoger en escenario: \n");
     int i = 1;
     Item *item = list_first(estado->current->Items);
-    while (item != NULL){
+    while (item){
         printf(" N° %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
         printf("===============================\n");
         item = list_next(estado->current->Items);
@@ -187,13 +189,13 @@ void recoger_items(EstadoJuego *estado){
         printf("Numero invalido.\n");
         return;
     }
-    Item *item = list_first(estado->current->Items);
+    Item *item2 = list_first(estado->current->Items);
     for(int i = 1; i < opcion; i++){
-        item = list_next(estado->current->Items);
+        item2 = list_next(estado->current->Items);
     }
 
     Item *nuevo_item = malloc(sizeof(Item));
-    *nuevo_item = *item;
+    *nuevo_item = *item2;
 
     list_pushBack(estado->Jugador->Items, nuevo_item);
 
@@ -201,6 +203,10 @@ void recoger_items(EstadoJuego *estado){
     estado->Jugador->puntuacion += nuevo_item->valor;
     estado->Jugador->tiempo -= 1;
 
+    item = list_first(estado->current->Items);
+    for(int i = 1; i < opcion; i++){
+        item = list_next(estado->current->Items);
+    }
     list_popCurrent(estado->current->Items);
     printf("Item %s recogido.\n", item->nombre);
 }
@@ -240,7 +246,7 @@ void descartar_items(EstadoJuego *estado){
 
     list_popCurrent(estado->Jugador->Items);
     free(item);
-    printf("Item %s descartado.\n", item->nombre);
+    printf("Item %s descartado.\n", guardar);
 }
 
 int calcular_tiempo(int peso){
@@ -276,10 +282,20 @@ void mover(EstadoJuego *estado){
     }
 }
 
+void liberar(List *items){
+    if(!items) return;
+    Item *item = list_first(items);
+    while(item != NULL){
+        free(item);
+        item = list_next(items);
+    }
+    list_clean(items);
+    free(items);
+}
+
+
 EstadoJuego *reiniciar(Nodo *inicio, EstadoJuego *currentPlay) {
-    
-    list_clean(currentPlay->Jugador->Items);
-    free(currentPlay->Jugador->Items);
+    liberar(currentPlay->Jugador->Items);
     free(currentPlay->Jugador);
     free(currentPlay);
     
@@ -293,7 +309,7 @@ EstadoJuego *reiniciar(Nodo *inicio, EstadoJuego *currentPlay) {
 
     estado->Jugador = player;
     estado->current = inicio;
-    return currentPlay;
+    return estado;
 }
 
 
@@ -343,13 +359,12 @@ void iniciarPartida(Map *grafo, Nodo *inicio) {
             default:
                 printf("Opcion no valida.\n");
         }
-        if (estado.current->final){
-            break;
-        }
+    }
+    if(player->tiempo <= 0){
+        printf("Se acabo el tiempo.\n");
     }
     printf("Fin del juego. Tiempo agotado o final alcanzado.\n");
-    list_clean(player->Items);
-    free(player->Items);
+    liberar(player->Items);
     free(player);
     free(estado);
 }
@@ -358,7 +373,7 @@ void iniciarPartida(Map *grafo, Nodo *inicio) {
 
 
 int main() {
-    Map *grafo = map_create();
+    Map *grafo = map_create(int_equal);
     Nodo *esc = NULL;
     int opcion;
     printf("Ingresar opcion: \n");
@@ -394,7 +409,6 @@ int main() {
 
   return 0;
 }
-
 
 
 
