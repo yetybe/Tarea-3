@@ -50,9 +50,8 @@
   campos[idx] = NULL; // Marcar el final del array
   return campos;
 }*/
-// Lee una línea CSV y devuelve array dinámico de strings (debes liberar cada string y el array)
 char **leer_linea_csv(FILE *f, char delim) {
-    char buffer[1024];
+    char buffer[2048];
     if (!fgets(buffer, sizeof(buffer), f)) return NULL;
 
     int len = strlen(buffer);
@@ -60,47 +59,67 @@ char **leer_linea_csv(FILE *f, char delim) {
 
     char **campos = malloc(20 * sizeof(char*)); // máximo 20 campos
     int campo_idx = 0;
-    int pos = 0;
-    int start = 0;
-    int in_quotes = 0;
-    int i = 0;
 
-    while (buffer[i]) {
-        if (buffer[i] == '"') {
+    int in_quotes = 0;
+    int start = 0;
+    for (int i = 0; ; i++) {
+        char c = buffer[i];
+        int end_of_field = 0;
+
+        if (c == '"') {
             in_quotes = !in_quotes;
-        } else if (buffer[i] == delim && !in_quotes) {
+        } 
+
+        if ((c == delim && !in_quotes) || c == '\0') {
+            end_of_field = 1;
             int size = i - start;
+            // Ignorar comillas al inicio y fin
+            int real_start = start;
+            int real_end = i - 1;
+            if (size > 1 && buffer[real_start] == '"' && buffer[real_end] == '"') {
+                real_start++;
+                real_end--;
+                size = real_end - real_start + 1;
+            }
+
+            // Copiar campo con malloc
             char *campo = malloc(size + 1);
-            strncpy(campo, buffer + start, size);
+            if (campo == NULL) {
+                // manejar error malloc
+                for (int j = 0; j < campo_idx; j++) free(campos[j]);
+                free(campos);
+                return NULL;
+            }
+            memcpy(campo, buffer + real_start, size);
             campo[size] = '\0';
 
-            // eliminar comillas si existen al inicio y final
-            if (campo[0] == '"' && campo[size-1] == '"') {
-                memmove(campo, campo+1, size-2);
-                campo[size-2] = '\0';
+            // Eliminar espacios al inicio y fin del campo
+            // Quitar espacios a la izquierda
+            int inicio_campo = 0;
+            while (campo[inicio_campo] == ' ' && campo[inicio_campo] != '\0') inicio_campo++;
+
+            // Quitar espacios a la derecha
+            int fin_campo = strlen(campo) - 1;
+            while (fin_campo >= 0 && campo[fin_campo] == ' ') {
+                campo[fin_campo] = '\0';
+                fin_campo--;
+            }
+
+            if (inicio_campo > 0) {
+                memmove(campo, campo + inicio_campo, strlen(campo + inicio_campo) + 1);
             }
 
             campos[campo_idx++] = campo;
             start = i + 1;
         }
-        i++;
-    }
 
-    // último campo
-    int size = i - start;
-    char *campo = malloc(size + 1);
-    strncpy(campo, buffer + start, size);
-    campo[size] = '\0';
-    if (campo[0] == '"' && campo[size-1] == '"') {
-        memmove(campo, campo+1, size-2);
-        campo[size-2] = '\0';
+        if (c == '\0') break;
     }
-    campos[campo_idx++] = campo;
 
     campos[campo_idx] = NULL; // marca fin
-
     return campos;
 }
+
 
 
 List *split_string(const char *str, const char *delim) {

@@ -157,10 +157,20 @@ void *list_popBack(List *L) {
   return data;
 }
 
-int list_size(List *L){
+/*int list_size(List *L){
     return L->size;
+}*/
+int list_size(List *list) {
+    if (list == NULL || list->head == NULL) return 0;
+    
+    int count = 0;
+    Node *current = list->head;
+    while (current != NULL) {
+        count++;
+        current = current->next;
+    }
+    return count;
 }
-
 void *list_popCurrent(List *L) {
   if (L == NULL || L->current == NULL) {
     return NULL; // Lista no inicializada o current no definido

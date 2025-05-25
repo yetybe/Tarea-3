@@ -44,9 +44,10 @@ void mostrarMenuPrincipal() {
 
 int int_equal(void *a, void *b) {
     return (*(int *)a == *(int *)b);
+    //return strcmp((char *)a, (char *)b) == 0;
 }
 
-void leer_escenarios(Map *grafo) {
+/*void leer_escenarios(Map *grafo) {
   // Intenta abrir el archivo CSV que contiene datos de películas
   FILE *archivo = fopen("data/graphquest.csv", "r");
   if (archivo == NULL) {
@@ -118,15 +119,127 @@ void leer_escenarios(Map *grafo) {
   map_clean(referencias);
   free(referencias);
   fclose(archivo); // Cierra el archivo después de leer todas las líneas
-}
+}*/
+void leer_escenarios(Map *grafo) {
+    FILE *archivo = fopen("data/graphquest.csv", "r");
+    if (archivo == NULL) {
+        perror("Error al abrir el archivo");
+        return;
+    }
 
+    // Leer y descartar la cabecera
+    leer_linea_csv(archivo, ',');
+    
+    char **campos;
+    Map *referencias = map_create(int_equal);
+
+    while ((campos = leer_linea_csv(archivo, ',')) != NULL) {
+        // Verificar que haya suficientes campos
+        if (campos[0] == NULL || campos[1] == NULL) continue;
+
+        Nodo *newNodo = malloc(sizeof(Nodo));
+        
+        // Convertir ID a entero correctamente
+        int id = atoi(campos[0]);
+        newNodo->id = id;
+        strncpy(newNodo->nombre, campos[1], sizeof(newNodo->nombre) - 1);
+        newNodo->nombre[sizeof(newNodo->nombre) - 1] = '\0';
+        
+        if (campos[2] != NULL) {
+            strncpy(newNodo->descripcion, campos[2], sizeof(newNodo->descripcion) - 1);
+            newNodo->descripcion[sizeof(newNodo->descripcion) - 1] = '\0';
+        }
+
+        newNodo->final = (campos[5] != NULL) ? atoi(campos[5]) : 0;
+        newNodo->Items = list_create();
+        newNodo->vecinos = map_create(int_equal);
+
+        // Procesar items
+        if (campos[3] != NULL && strlen(campos[3]) > 0) {
+            List *itemsRaw = split_string(campos[3], ";");
+            char *itemStr;
+            while ((itemStr = list_popFront(itemsRaw)) != NULL) {
+                List *values = split_string(itemStr, ",");
+                if (list_size(values) >= 3) {
+                    Item *item = malloc(sizeof(Item));
+                    strncpy(item->nombre, list_popFront(values), sizeof(item->nombre) - 1);
+                    item->nombre[sizeof(item->nombre) - 1] = '\0';
+                    item->valor = atoi(list_popFront(values));
+                    item->peso = atoi(list_popFront(values));
+                    list_pushBack(newNodo->Items, item);
+                }
+                list_clean(values);
+                free(values);
+                free(itemStr);
+            }
+            list_clean(itemsRaw);
+            free(itemsRaw);
+        }
+
+        // Guardar conexiones para procesar después
+        int *key = malloc(sizeof(int));
+        *key = id;
+        char *conexiones = (campos[4] != NULL) ? strdup(campos[4]) : strdup("");
+        map_insert(referencias, key, conexiones);
+
+        // Insertar nodo en el grafo
+        int *graphKey = malloc(sizeof(int));
+        *graphKey = id;
+        map_insert(grafo, graphKey, newNodo);
+    }
+
+    // Procesar conexiones
+    MapPair *pair = map_first(grafo);
+    while (pair != NULL) {
+        int id = *(int *)pair->key;
+        Nodo *nodo = pair->value;
+        
+        char *conexionesStr = (char *)map_search(referencias, &id);
+        if (conexionesStr != NULL && strlen(conexionesStr) > 0) {
+            List *conexiones = split_string(conexionesStr, ";");
+            char *conexion;
+            while ((conexion = list_popFront(conexiones)) != NULL) {
+                char *dir = strtok(conexion, ":");
+                char *idDestStr = strtok(NULL, ":");
+                if (dir && idDestStr) {
+                    int idDest = atoi(idDestStr);
+                    int *keyDest = malloc(sizeof(int));
+                    *keyDest = idDest;
+                    Nodo *destino = (Nodo *)map_search(grafo, keyDest);
+                    free(keyDest);
+                    
+                    if (destino) {
+                        map_insert(nodo->vecinos, strdup(dir), destino);
+                    }
+                }
+                free(conexion);
+            }
+            list_clean(conexiones);
+            free(conexiones);
+        }
+        pair = map_next(grafo);
+    }
+
+    // Limpieza
+    MapPair *refPair;
+    while ((refPair = map_first(referencias)) != NULL) {
+        free(refPair->key);
+        free(refPair->value);
+        map_remove(referencias, refPair->key);
+    }
+    map_clean(referencias);
+    fclose(archivo);
+}
 
 //Cada vez que se entra a un nuevo escenario o se realiza una acción, se muestra el siguiente menú:
 void mostrar_estado_actual(EstadoJuego *est_jug){
     printf("\n===== Escenario: %s =====\n", est_jug->current->nombre);
     printf("Descripcion escenario: %s\n", est_jug->current->descripcion);
     printf("Inventario.\n");
-
+    if (!est_jug || !est_jug->Jugador || !est_jug->Jugador->Items) {
+        printf("Error: estado o jugador no inicializado correctamente.\n");
+        return;
+    }
     if(list_size(est_jug->Jugador->Items) == 0){
         printf("No hay items disponibles :(\n");
     } else {
@@ -284,7 +397,8 @@ void mover(EstadoJuego *estado){
 }
 
 void liberar(List *items){
-    if(!items) return;
+    if (!items) return;
+
     Item *item = list_first(items);
     while(item != NULL){
         free(item);
@@ -293,6 +407,7 @@ void liberar(List *items){
     list_clean(items);
     free(items);
 }
+
 
 
 EstadoJuego *reiniciar(Nodo *inicio, EstadoJuego *currentPlay) {
@@ -391,6 +506,7 @@ int pedir_id_escenario_inicial(Map *grafo) {
 
 
 
+
 int main() {
     Map *grafo = map_create(int_equal);
     Nodo *esc = NULL;
@@ -416,7 +532,7 @@ int main() {
                 //printf("Laberinto cargado correctamente.\n");
                 //break;
             case 2:
-                if (grafo == NULL || map_first(grafo) == 0) {
+                /*if (grafo == NULL || map_first(grafo) == 0) {
                     printf("Primero debes cargar el laberinto.\n");
                 } else {
                     int id = pedir_id_escenario_inicial(grafo);
@@ -430,7 +546,8 @@ int main() {
                     } else {
                         iniciarPartida(grafo, escenario_inicial);
                     }
-                }
+                }*/
+                iniciarPartida(grafo, esc);
                 break;
             case 3:
                 printf("Saliendo del juego...\n");
