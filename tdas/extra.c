@@ -4,7 +4,7 @@
 #define MAX_LINE_LENGTH 1024
 #define MAX_FIELDS 300
 
-char **leer_linea_csv(FILE *archivo, char separador) {
+/*char **leer_linea_csv(FILE *archivo, char separador) {
   static char linea[MAX_LINE_LENGTH];
   static char *campos[MAX_FIELDS];
   char *ptr, *start;
@@ -49,7 +49,59 @@ char **leer_linea_csv(FILE *archivo, char separador) {
 
   campos[idx] = NULL; // Marcar el final del array
   return campos;
+}*/
+// Lee una línea CSV y devuelve array dinámico de strings (debes liberar cada string y el array)
+char **leer_linea_csv(FILE *f, char delim) {
+    char buffer[1024];
+    if (!fgets(buffer, sizeof(buffer), f)) return NULL;
+
+    int len = strlen(buffer);
+    if (len > 0 && buffer[len-1] == '\n') buffer[len-1] = '\0';
+
+    char **campos = malloc(20 * sizeof(char*)); // máximo 20 campos
+    int campo_idx = 0;
+    int pos = 0;
+    int start = 0;
+    int in_quotes = 0;
+    int i = 0;
+
+    while (buffer[i]) {
+        if (buffer[i] == '"') {
+            in_quotes = !in_quotes;
+        } else if (buffer[i] == delim && !in_quotes) {
+            int size = i - start;
+            char *campo = malloc(size + 1);
+            strncpy(campo, buffer + start, size);
+            campo[size] = '\0';
+
+            // eliminar comillas si existen al inicio y final
+            if (campo[0] == '"' && campo[size-1] == '"') {
+                memmove(campo, campo+1, size-2);
+                campo[size-2] = '\0';
+            }
+
+            campos[campo_idx++] = campo;
+            start = i + 1;
+        }
+        i++;
+    }
+
+    // último campo
+    int size = i - start;
+    char *campo = malloc(size + 1);
+    strncpy(campo, buffer + start, size);
+    campo[size] = '\0';
+    if (campo[0] == '"' && campo[size-1] == '"') {
+        memmove(campo, campo+1, size-2);
+        campo[size-2] = '\0';
+    }
+    campos[campo_idx++] = campo;
+
+    campos[campo_idx] = NULL; // marca fin
+
+    return campos;
 }
+
 
 List *split_string(const char *str, const char *delim) {
   List *result = list_create();

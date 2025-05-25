@@ -46,9 +46,6 @@ int int_equal(void *a, void *b) {
     return (*(int *)a == *(int *)b);
 }
 
-/**
- * Carga canciones desde un archivo CSV
- */
 void leer_escenarios(Map *grafo) {
   // Intenta abrir el archivo CSV que contiene datos de películas
   FILE *archivo = fopen("data/graphquest.csv", "r");
@@ -99,13 +96,17 @@ void leer_escenarios(Map *grafo) {
   while(p){
     Nodo *n = p->value;
     int id = *(int *)p->key;
-    char *conns = map_search(referencias, &id);
+    char *conns = (char *)map_search(referencias, &id);
+    if (!conns) {
+        p = map_next(grafo);
+        continue;
+    }
     List *dirList = split_string(conns, ";");
 
     for (char *d = list_first(dirList); d; d = list_next(dirList)) {
         char *dir = strtok(d, ":");
         int dest = atoi(strtok(NULL, ":"));
-        Nodo *vecino = map_search(grafo, &dest);
+        Nodo *vecino = (Nodo *)map_search(grafo, &dest);
         if (vecino && dir)
             map_insert(n->vecinos, strdup(dir), vecino);
     }
@@ -233,19 +234,19 @@ void descartar_items(EstadoJuego *estado){
         printf("Item invalido.\n");
         return;
     }
-    Item *item = list_first(estado->Jugador->Items);
+    Item *item2 = list_first(estado->Jugador->Items);
     for(int i = 1; i < opcion; i++){
-        item = list_next(estado->Jugador->Items);
+        item2 = list_next(estado->Jugador->Items);
     }
-    estado->Jugador->pesoTotal -= item->peso;
-    estado->Jugador->puntuacion -= item->valor;
+    estado->Jugador->pesoTotal -= item2->peso;
+    estado->Jugador->puntuacion -= item2->valor;
     estado->Jugador->tiempo -= 1;
 
     char guardar[100];
-    strcpy(guardar,item->nombre);
+    strcpy(guardar,item2->nombre);
 
     list_popCurrent(estado->Jugador->Items);
-    free(item);
+    free(item2);
     printf("Item %s descartado.\n", guardar);
 }
 
@@ -259,7 +260,7 @@ void mover(EstadoJuego *estado){
     fgets(direccion,sizeof(direccion),stdin);
     direccion[strcspn(direccion,"\n")] = 0;
     
-    Nodo *vecino = map_search(estado->current->vecinos, direccion);
+    Nodo *vecino = (Nodo *)map_search(estado->current->vecinos, direccion);
     if(!vecino){
         printf("Direccion invalida.\n");
         return;
@@ -368,6 +369,24 @@ void iniciarPartida(Map *grafo, Nodo *inicio) {
     free(player);
     free(estado);
 }
+int pedir_id_escenario_inicial(Map *grafo) {
+    printf("Escenarios disponibles:\n");
+    MapPair *p = map_first(grafo);
+    while (p) {
+        Nodo *n = (Nodo *)p->value;
+        int id = *(int *)p->key;
+        printf("ID (key): %d - ID (nodo): %d - Nombre: %s\n", id, n->id, n->nombre);
+        p = map_next(grafo);
+    }
+
+    int id_elegido;
+    printf("Ingrese el ID del escenario inicial: ");
+    scanf("%d", &id_elegido);
+    getchar();  // limpiar buffer
+
+    return id_elegido;
+}
+
 
 
 
@@ -386,18 +405,32 @@ int main() {
         switch (opcion){
             case 1:
                 leer_escenarios(grafo);
-                printf("Laberinto cargado correctamente.\n");
+                MapPair *p = map_first(grafo);
+                if (p != NULL) {
+                    esc = (Nodo *)p->value;
+                    printf("Laberinto cargado correctamente. Nodo inicio: %s\n", esc->nombre);
+                } else {
+                    printf("Laberinto cargado pero sin nodos.\n");
+                }
                 break;
+                //printf("Laberinto cargado correctamente.\n");
+                //break;
             case 2:
-                if(!esc){
-                    int idI = 1;
-                    esc = map_search(grafo, &idI);
+                if (grafo == NULL || map_first(grafo) == 0) {
+                    printf("Primero debes cargar el laberinto.\n");
+                } else {
+                    int id = pedir_id_escenario_inicial(grafo);
+                    int *keyBusqueda = malloc(sizeof(int));
+                    *keyBusqueda = id;
+                    Nodo *escenario_inicial = (Nodo *)map_search(grafo, keyBusqueda);
+                    free(keyBusqueda);
+
+                    if (!escenario_inicial) {
+                        printf("No existe un escenario con ese ID.\n");
+                    } else {
+                        iniciarPartida(grafo, escenario_inicial);
+                    }
                 }
-                if(!esc){
-                    printf("No existe escenario incial.\n");
-                    break;
-                }
-                iniciarPartida(grafo,esc);
                 break;
             case 3:
                 printf("Saliendo del juego...\n");
@@ -412,21 +445,6 @@ int main() {
 
 
 
-/*case 2:
-       printf("Ingrese ID escenario inical: ");
-       int id;
-       scanf("%d", &id);
-       getchar();
-       esc = map_search(grafo, &id);
 
-       if(!esc){
-          printf("No existe un escenario con ese ID.\n");
-          break;
-        }
-        iniciarPartida(grafo,esc);
-        break;
-
-
-
-
-*/
+//gcc tarea3.c tdas/list.c tdas/map.c tdas/extra.c -o graphquest
+//./graphquest
