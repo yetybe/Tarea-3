@@ -13,13 +13,19 @@ typedef struct {
 } Item;
 
 typedef struct Nodo {
-    char descripcion[100];
+    char descripcion[200];
     int id;
     char nombre[100];
+    int arriba;
+    int abajo;
+    int izquierda;
+    int derecha;
     int final;
     List *Items;
-    Map *vecinos;
+    Mapvecinos;
+
 } Nodo;
+
 
 typedef struct {
     List *Items;
@@ -33,13 +39,22 @@ typedef struct{
     Jugador *Jugador;
 } EstadoJuego;
 
+typedef struct {
+    Jugador *jugador1;
+    Jugador *jugador2;
+    Nodo *nodo_j1;
+    Nodo *nodo_j2;
+    int turno_actual;
+} EstadoMultijugador;
+
 void mostrarMenuPrincipal() {
   puts("========================================");
   puts("      GraphQuest");
   puts("========================================");
   puts("1) Cargar Laberinto");
-  puts("2) Iniciar Partida");
-  puts("3) Salir");
+  puts("2) Iniciar Partida Individual");
+  puts("3) Iniciar Partida Multijugador");
+  puts("4) Salir");
 }
 
 int int_equal(void *a, void *b) {
@@ -120,7 +135,7 @@ int int_equal(void *a, void *b) {
   free(referencias);
   fclose(archivo); // Cierra el archivo después de leer todas las líneas
 }*/
-void leer_escenarios(Map *grafo) {
+/*void leer_escenarios(Map *grafo) {
     FILE *archivo = fopen("data/graphquest.csv", "r");
     if (archivo == NULL) {
         perror("Error al abrir el archivo");
@@ -228,6 +243,129 @@ void leer_escenarios(Map *grafo) {
         map_remove(referencias, refPair->key);
     }
     map_clean(referencias);
+    fclose(archivo);
+}*/
+void leer_escenarios(Map *grafo) {
+    FILE *archivo = fopen("data/graphquest.csv", "r");
+    if (archivo == NULL) {
+        perror("Error al abrir el archivo");
+        return;
+    }
+
+    // Leer y descartar la cabecera
+    leer_linea_csv(archivo, ',');
+    
+    char **campos;
+
+    while ((campos = leer_linea_csv(archivo, ',')) != NULL) {
+        // Verificar que haya suficientes campos
+        if (campos[0] == NULL || campos[1] == NULL) continue;
+
+        Nodo *newNodo = malloc(sizeof(Nodo));
+        
+        // Convertir ID a entero correctamente
+        int id = atoi(campos[0]);
+        newNodo->id = id;
+        strncpy(newNodo->nombre, campos[1], sizeof(newNodo->nombre) - 1);
+        newNodo->nombre[sizeof(newNodo->nombre) - 1] = '\0';
+        
+        if (campos[2] != NULL) {
+            strncpy(newNodo->descripcion, campos[2], sizeof(newNodo->descripcion) - 1);
+            newNodo->descripcion[sizeof(newNodo->descripcion) - 1] = '\0';
+        }
+
+        newNodo->final = (campos[5] != NULL) ? atoi(campos[5]) : 0;
+        newNodo->Items = list_create();
+        newNodo->vecinos = map_create(int_equal);
+
+        // Procesar items
+        if (campos[3] != NULL && strlen(campos[3]) > 0) {
+            List *itemsRaw = split_string(campos[3], ";");
+            char *itemStr;
+            while ((itemStr = list_popFront(itemsRaw)) != NULL) {
+                List *values = split_string(itemStr, ",");
+                if (list_size(values) >= 3) {
+                    Item *item = malloc(sizeof(Item));
+                    strncpy(item->nombre, list_popFront(values), sizeof(item->nombre) - 1);
+                    item->nombre[sizeof(item->nombre) - 1] = '\0';
+                    item->valor = atoi(list_popFront(values));
+                    item->peso = atoi(list_popFront(values));
+                    list_pushBack(newNodo->Items, item);
+                }
+                list_clean(values);
+                free(values);
+                free(itemStr);
+            }
+            list_clean(itemsRaw);
+            free(itemsRaw);
+        }
+
+        // Insertar nodo en el grafo
+        int *graphKey = malloc(sizeof(int));
+        *graphKey = id;
+        map_insert(grafo, graphKey, newNodo);
+    }
+    
+    MapPair *pair = map_first(grafo);
+    while (pair != NULL) 
+    {
+        Nodo *actual = (Nodo *)pair->value;
+
+        // Conexi贸n arriba
+        if (actual->arriba != -1) 
+        {
+            int *key = malloc(sizeof(int));
+            *key = actual->arriba;
+            Nodo *vecino = (Nodo *)map_search(grafo, key);
+            free(key);
+    
+            if (vecino != NULL) {
+                map_insert(actual->vecinos, "arriba", vecino);
+            }
+        }
+    
+        // Conexi贸n abajo (independiente de arriba)
+        if (actual->abajo != -1) 
+        {
+            int *key = malloc(sizeof(int));
+            *key = actual->abajo;
+            Nodo *vecino = (Nodo *)map_search(grafo, key);
+            free(key);
+    
+            if (vecino != NULL) {
+                map_insert(actual->vecinos, "abajo", vecino);
+            }
+        }
+
+        // Conexi贸n izquierda
+        if (actual->izquierda != -1) 
+        {
+            int *key = malloc(sizeof(int));
+            *key = actual->izquierda;
+            Nodo *vecino = (Nodo *)map_search(grafo, key);
+            free(key);
+    
+            if (vecino != NULL) {
+                map_insert(actual->vecinos, "izquierda", vecino);
+            }
+        }
+
+        // Conexi贸n derecha
+        if (actual->derecha != -1) 
+        {
+            int *key = malloc(sizeof(int));
+            *key = actual->derecha;
+            Nodo *vecino = (Nodo *)map_search(grafo, key);
+            free(key);
+    
+            if (vecino != NULL) {
+                map_insert(actual->vecinos, "derecha", vecino);
+            }
+        }
+
+        pair = map_next(grafo);  // No olvides avanzar al siguiente nodo
+    }
+
     fclose(archivo);
 }
 
@@ -367,7 +505,7 @@ int calcular_tiempo(int peso){
     return (peso + 9 ) / 10;
 }
 
-void mover(EstadoJuego *estado){
+/*void mover(EstadoJuego *estado){
     char direccion[50];
     printf("Direccion (arriba,abajo,izquierda,derecha): ");
     fgets(direccion,sizeof(direccion),stdin);
@@ -389,6 +527,48 @@ void mover(EstadoJuego *estado){
     printf("Se movio a : %s\n", vecino->nombre);
 
     if(vecino->final){
+        printf("Escenario final!\n");
+        printf("Puntaje final: %d\n", estado->Jugador->puntuacion);
+        estado->Jugador->tiempo = 0;
+
+    }
+}*/
+
+void mover(EstadoJuego estado){
+
+    Nodohabitacion = estado->current;
+    printf("Direcciones validas:\n");
+
+    if(habitacion->arriba != - 1)
+        printf("Ariiba\n");
+    if(habitacion->abajo != - 1)
+        printf("Abajo\n");
+    if(habitacion->izquierda != - 1)
+        printf("Izquierda\n");
+    if(habitacion->derecha != - 1)
+        printf("Derecha\n");
+
+    char direccion[50];
+    printf("\nIngrese la direccion deseada: ");
+    fgets(direccion,sizeof(direccion),stdin);
+    direccion[strcspn(direccion,"\n")] = 0;
+
+    Nodo vecino = (Nodo)map_search(estado->current->vecinos, direccion);
+    if(!vecino){
+        printf("Direccion invalida.\n");
+        return;
+    }
+    int tiempo = calcular_tiempo(estado->Jugador->pesoTotal);
+    if(estado->Jugador->tiempo < tiempo ){
+        printf("No hay suficiente tiempo.\n");
+        return;
+    }
+    estado->Jugador->tiempo -= tiempo;
+    estado->current = vecino;
+
+    printf("Se movio a : %s\n", vecino->nombre);
+
+    if(vecino->final == 1){
         printf("Escenario final!\n");
         printf("Puntaje final: %d\n", estado->Jugador->puntuacion);
         estado->Jugador->tiempo = 0;
@@ -503,6 +683,103 @@ int pedir_id_escenario_inicial(Map *grafo) {
 }
 
 
+void iniciarPartidaMultijador(Map *grafo, Nodo *inicio){
+    EstadoMultijugador *estado = malloc(sizeof(EstadoMultijugador));
+
+    estado->jugador1 = malloc(sizeof(Jugador));
+    estado->jugador1->Items = list_create();
+    estado->jugador1->tiempo = 10;
+    estado->jugador1->puntuacion = 0;
+    estado->jugador1->pesoTotal = 0;
+
+    estado->jugador2 = malloc(sizeof(Jugador));
+    estado->jugador2->Items = list_create();
+    estado->jugador2->tiempo = 10;
+    estado->jugador2->puntuacion = 0;
+    estado->jugador2->pesoTotal = 0;
+
+    estado->nodo_j1 = inicio;
+    estado->nodo_j2 = inicio;
+    estado->turno_actual = 0;
+
+    int salir = 0;
+
+    while(!salir){
+        Jugador *jug;
+        Nodo *nodo;
+        if(estado->turno_actual = 0) {
+            printf("\n=== Turno del jugador 1 ===\n");
+            jug = estado->jugador1;
+            nodo = estado->nodo_j1;
+        } else {
+            printf("\n=== Turno del jugador 2 ===\n");
+            jug = estado->jugador2;
+            nodo = estado->nodo_j2;
+        }
+        EstadoJuego temp;
+        temp.Jugador = jug;
+        temp.current = nodo;
+
+        mostrar_estado_actual(&temp);
+
+        int acciones = 2;
+        while(acciones > 0 && jug->tiempo > 0){
+            printf("\nOpciones:\n1. Recoger Item\n2. Descartar Item\n3. Avanzar\n4. Terminar Turno\n");
+            int opcion;
+            scanf("%d",&opcion);
+            getchar();
+
+            switch (opcion){
+                case  1:
+                    recoger_items(&temp);
+                    acciones--;
+                    break;
+                case 2:
+                    descartar_items(&temp);
+                    acciones--;
+                    break;
+                case 3:
+                    mover(&temp);
+                    if (estado->turno_actual == 0){
+                        estado->nodo_j1 = temp.current;
+                    }else {
+                        estado->nodo_j2 = temp.current;
+                    }
+                    acciones--;
+                    if(temp.current->final){
+                        printf("¡Jugador %d llegó al escenario final!\n", estado->turno_actual + 1);
+                        jug->tiempo = 0;
+                        acciones = 0;
+                    }
+                    break;
+                case 4:
+                    acciones = 0;
+                    break;
+            
+                default:
+                    printf("Opcion no valida.\n");
+            }
+        }
+        if( estado->jugador1->tiempo <= 0 && estado->jugador2->tiempo <= 0){
+            printf("\nFin del juego. Ambos jugadores terminaron.\n");
+            printf("Jugador 1 - Puntaje: %d\n", estado->jugador1->puntuacion);
+            printf("Jugador 2 - Puntaje: %d\n", estado->jugador2->puntuacion);
+            salir = 1;
+        }
+        estado->turno_actual = (estado->turno_actual + 1) % 2;
+    }
+
+    liberar(estado->jugador1->Items);
+    liberar(estado->jugador2->Items);
+    free(estado->jugador1);
+    free(estado->jugador2);
+    free(estado);
+}
+
+
+
+
+
 
 
 
@@ -550,12 +827,19 @@ int main() {
                 iniciarPartida(grafo, esc);
                 break;
             case 3:
+                if(grafo == NULL || map_first(grafo) == 0){
+                    printf("Debes cargar el laberinto.\n");
+                }else {
+                    iniciarPartidaMultijador(grafo, esc);
+                }
+                break;
+            case 4:
                 printf("Saliendo del juego...\n");
                 break;
             default:
                 printf("Opcion no valida.\n");
         }
-    } while (opcion != 3);
+    } while (opcion != 4);
 
   return 0;
 }
