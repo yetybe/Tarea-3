@@ -6,12 +6,15 @@
 #include <string.h>
 #include <math.h>
 
+/* Estructura para representar un ítem del juego */
 typedef struct {
     char nombre[100];
     int valor;
     int peso;
 } Item;
 
+
+/* Estructura para representar un nodo/escenario del laberinto */
 typedef struct Nodo {
     char descripcion[200];
     int id;
@@ -22,11 +25,11 @@ typedef struct Nodo {
     int derecha;
     int final;
     List *Items;
-    Mapvecinos;
+    Map *vecinos;
 
 } Nodo;
 
-
+/* Estructura para representar al jugador */
 typedef struct {
     List *Items;
     int tiempo;
@@ -34,11 +37,13 @@ typedef struct {
     int pesoTotal;
 } Jugador;
 
+/* Estructura para el estado del juego (individual) */
 typedef struct{
     Nodo *current;
     Jugador *Jugador;
 } EstadoJuego;
 
+/* Estructura para el estado del juego multijugador */
 typedef struct {
     Jugador *jugador1;
     Jugador *jugador2;
@@ -47,7 +52,12 @@ typedef struct {
     int turno_actual;
 } EstadoMultijugador;
 
-void mostrarMenuPrincipal() {
+
+
+/* Muestra el menú principal del juego */
+void mostrarMenuPrincipal() 
+{
+    limpiarPantalla();
   puts("========================================");
   puts("      GraphQuest");
   puts("========================================");
@@ -57,85 +67,17 @@ void mostrarMenuPrincipal() {
   puts("4) Salir");
 }
 
+
 int int_equal(void *a, void *b) {
+    if (a == NULL || b == NULL) return 0; // Manejo seguro de punteros nulos
     return (*(int *)a == *(int *)b);
-    //return strcmp((char *)a, (char *)b) == 0;
 }
 
-/*void leer_escenarios(Map *grafo) {
-  // Intenta abrir el archivo CSV que contiene datos de películas
-  FILE *archivo = fopen("data/graphquest.csv", "r");
-  if (archivo == NULL) {
-    perror("Error al abrir el archivo"); // Informa si el archivo no puede abrirse
-    return;
-  }
-  leer_linea_csv(archivo, ',');
-  char **campos;
-  Map *referencias = map_create(int_equal);
-
-  while ((campos = leer_linea_csv(archivo, ',')) != NULL) {
-    Nodo *newNodo = malloc(sizeof(Nodo));
-    newNodo->id = atoi(campos[0]);
-    strcpy(newNodo->nombre, campos[1]);
-    strcpy(newNodo->descripcion, campos[2]);
-    newNodo->Items = list_create();
-    newNodo->vecinos = map_create(int_equal);
-    newNodo->final = atoi(campos[5]);
 
 
-    List *itemsRaw = split_string(campos[3], ";");
-    for(char *itemStr = list_first(itemsRaw); itemStr != NULL; 
-        itemStr = list_next(itemsRaw)){
-
-        List *values = split_string(itemStr, ",");
-        Item *new_item = malloc(sizeof(Item));
-
-        strcpy(new_item->nombre, list_first(values));
-        new_item->valor = atoi(list_next(values));
-        new_item->peso = atoi(list_next(values));
-
-        list_pushBack(newNodo->Items,new_item);
-        list_clean(values);
-        free(values);
-    }
-    list_clean(itemsRaw);
-    free(itemsRaw);
-
-    
-    int *key = malloc(sizeof(int));
-    *key = newNodo->id;
-    map_insert(grafo,key,newNodo);
-    map_insert(referencias,key,strdup(campos[4]));
-  }
-
-  MapPair *p = map_first(grafo);
-  while(p){
-    Nodo *n = p->value;
-    int id = *(int *)p->key;
-    char *conns = (char *)map_search(referencias, &id);
-    if (!conns) {
-        p = map_next(grafo);
-        continue;
-    }
-    List *dirList = split_string(conns, ";");
-
-    for (char *d = list_first(dirList); d; d = list_next(dirList)) {
-        char *dir = strtok(d, ":");
-        int dest = atoi(strtok(NULL, ":"));
-        Nodo *vecino = (Nodo *)map_search(grafo, &dest);
-        if (vecino && dir)
-            map_insert(n->vecinos, strdup(dir), vecino);
-    }
-    list_clean(dirList);
-    free(dirList);
-    p = map_next(grafo);
-  }
-
-  map_clean(referencias);
-  free(referencias);
-  fclose(archivo); // Cierra el archivo después de leer todas las líneas
-}*/
-/*void leer_escenarios(Map *grafo) {
+/* Carga los escenarios desde un archivo CSV y construye el grafo del laberinto */
+void leer_escenarios(Map *grafo) 
+{
     FILE *archivo = fopen("data/graphquest.csv", "r");
     if (archivo == NULL) {
         perror("Error al abrir el archivo");
@@ -146,12 +88,12 @@ int int_equal(void *a, void *b) {
     leer_linea_csv(archivo, ',');
     
     char **campos;
-    Map *referencias = map_create(int_equal);
 
     while ((campos = leer_linea_csv(archivo, ',')) != NULL) {
         // Verificar que haya suficientes campos
         if (campos[0] == NULL || campos[1] == NULL) continue;
-
+        
+        /*Se crea nuevo nodo*/
         Nodo *newNodo = malloc(sizeof(Nodo));
         
         // Convertir ID a entero correctamente
@@ -165,11 +107,24 @@ int int_equal(void *a, void *b) {
             newNodo->descripcion[sizeof(newNodo->descripcion) - 1] = '\0';
         }
 
-        newNodo->final = (campos[5] != NULL) ? atoi(campos[5]) : 0;
+        // Se copian las  direcciones que uno puede tomar estando en la habtiacion en cuestion
+        newNodo->arriba = (campos[4] != NULL && strcmp(campos[4], "-1") != 0) ? atoi(campos[4]) : -1;
+        newNodo->abajo = (campos[5] != NULL && strcmp(campos[5], "-1") != 0) ? atoi(campos[5]) : -1;
+        newNodo->izquierda = (campos[6] != NULL && strcmp(campos[6], "-1") != 0) ? atoi(campos[6]) : -1;
+        newNodo->derecha = (campos[7] != NULL && strcmp(campos[7], "-1") != 0) ? atoi(campos[7]) : -1;
+        
+        if (strcmp(campos[8] , "Si") == 0)
+        {
+            newNodo->final = 1;
+        }
+        else{
+            newNodo->final = 0;
+        }
+        
         newNodo->Items = list_create();
         newNodo->vecinos = map_create(int_equal);
 
-        // Procesar items
+        // Procesar itemss
         if (campos[3] != NULL && strlen(campos[3]) > 0) {
             List *itemsRaw = split_string(campos[3], ";");
             char *itemStr;
@@ -191,200 +146,100 @@ int int_equal(void *a, void *b) {
             free(itemsRaw);
         }
 
-        // Guardar conexiones para procesar después
+        // Guardar nodo en el grafo
         int *key = malloc(sizeof(int));
         *key = id;
-        char *conexiones = (campos[4] != NULL) ? strdup(campos[4]) : strdup("");
-        map_insert(referencias, key, conexiones);
-
-        // Insertar nodo en el grafo
-        int *graphKey = malloc(sizeof(int));
-        *graphKey = id;
-        map_insert(grafo, graphKey, newNodo);
+        map_insert(grafo, key, newNodo);
     }
 
-    // Procesar conexiones
-    MapPair *pair = map_first(grafo);
-    while (pair != NULL) {
-        int id = *(int *)pair->key;
-        Nodo *nodo = pair->value;
-        
-        char *conexionesStr = (char *)map_search(referencias, &id);
-        if (conexionesStr != NULL && strlen(conexionesStr) > 0) {
-            List *conexiones = split_string(conexionesStr, ";");
-            char *conexion;
-            while ((conexion = list_popFront(conexiones)) != NULL) {
-                char *dir = strtok(conexion, ":");
-                char *idDestStr = strtok(NULL, ":");
-                if (dir && idDestStr) {
-                    int idDest = atoi(idDestStr);
-                    int *keyDest = malloc(sizeof(int));
-                    *keyDest = idDest;
-                    Nodo *destino = (Nodo *)map_search(grafo, keyDest);
-                    free(keyDest);
-                    
-                    if (destino) {
-                        map_insert(nodo->vecinos, strdup(dir), destino);
-                    }
-                }
-                free(conexion);
-            }
-            list_clean(conexiones);
-            free(conexiones);
-        }
-        pair = map_next(grafo);
-    }
+MapPair *pair = map_first(grafo);
+while (pair != NULL) 
+{
+    Nodo *actual = (Nodo *)pair->value;
 
-    // Limpieza
-    MapPair *refPair;
-    while ((refPair = map_first(referencias)) != NULL) {
-        free(refPair->key);
-        free(refPair->value);
-        map_remove(referencias, refPair->key);
-    }
-    map_clean(referencias);
-    fclose(archivo);
-}*/
-void leer_escenarios(Map *grafo) {
-    FILE *archivo = fopen("data/graphquest.csv", "r");
-    if (archivo == NULL) {
-        perror("Error al abrir el archivo");
-        return;
-    }
-
-    // Leer y descartar la cabecera
-    leer_linea_csv(archivo, ',');
-    
-    char **campos;
-
-    while ((campos = leer_linea_csv(archivo, ',')) != NULL) {
-        // Verificar que haya suficientes campos
-        if (campos[0] == NULL || campos[1] == NULL) continue;
-
-        Nodo *newNodo = malloc(sizeof(Nodo));
-        
-        // Convertir ID a entero correctamente
-        int id = atoi(campos[0]);
-        newNodo->id = id;
-        strncpy(newNodo->nombre, campos[1], sizeof(newNodo->nombre) - 1);
-        newNodo->nombre[sizeof(newNodo->nombre) - 1] = '\0';
-        
-        if (campos[2] != NULL) {
-            strncpy(newNodo->descripcion, campos[2], sizeof(newNodo->descripcion) - 1);
-            newNodo->descripcion[sizeof(newNodo->descripcion) - 1] = '\0';
-        }
-
-        newNodo->final = (campos[5] != NULL) ? atoi(campos[5]) : 0;
-        newNodo->Items = list_create();
-        newNodo->vecinos = map_create(int_equal);
-
-        // Procesar items
-        if (campos[3] != NULL && strlen(campos[3]) > 0) {
-            List *itemsRaw = split_string(campos[3], ";");
-            char *itemStr;
-            while ((itemStr = list_popFront(itemsRaw)) != NULL) {
-                List *values = split_string(itemStr, ",");
-                if (list_size(values) >= 3) {
-                    Item *item = malloc(sizeof(Item));
-                    strncpy(item->nombre, list_popFront(values), sizeof(item->nombre) - 1);
-                    item->nombre[sizeof(item->nombre) - 1] = '\0';
-                    item->valor = atoi(list_popFront(values));
-                    item->peso = atoi(list_popFront(values));
-                    list_pushBack(newNodo->Items, item);
-                }
-                list_clean(values);
-                free(values);
-                free(itemStr);
-            }
-            list_clean(itemsRaw);
-            free(itemsRaw);
-        }
-
-        // Insertar nodo en el grafo
-        int *graphKey = malloc(sizeof(int));
-        *graphKey = id;
-        map_insert(grafo, graphKey, newNodo);
-    }
-    
-    MapPair *pair = map_first(grafo);
-    while (pair != NULL) 
+    // Conexión arriba
+    if (actual->arriba != -1) 
     {
-        Nodo *actual = (Nodo *)pair->value;
-
-        // Conexi贸n arriba
-        if (actual->arriba != -1) 
-        {
-            int *key = malloc(sizeof(int));
-            *key = actual->arriba;
-            Nodo *vecino = (Nodo *)map_search(grafo, key);
-            free(key);
-    
-            if (vecino != NULL) {
-                map_insert(actual->vecinos, "arriba", vecino);
-            }
+        int *key = malloc(sizeof(int));  // Reservar memoria para la clave
+        *key = actual->arriba;           // Asignar el valor del ID
+        MapPair *vecino = (MapPair *)map_search(grafo, key); // Se encuentra un par dento del grafo que posea el mismo key
+        
+        if (vecino != NULL) {
+            char *dir_key = strdup("arriba");
+            Nodo * node = vecino->value;
+            map_insert(actual->vecinos, dir_key, node); // Se inserta en el mapa de nodos vecinos del nodo
         }
-    
-        // Conexi贸n abajo (independiente de arriba)
-        if (actual->abajo != -1) 
-        {
-            int *key = malloc(sizeof(int));
-            *key = actual->abajo;
-            Nodo *vecino = (Nodo *)map_search(grafo, key);
-            free(key);
-    
-            if (vecino != NULL) {
-                map_insert(actual->vecinos, "abajo", vecino);
-            }
-        }
-
-        // Conexi贸n izquierda
-        if (actual->izquierda != -1) 
-        {
-            int *key = malloc(sizeof(int));
-            *key = actual->izquierda;
-            Nodo *vecino = (Nodo *)map_search(grafo, key);
-            free(key);
-    
-            if (vecino != NULL) {
-                map_insert(actual->vecinos, "izquierda", vecino);
-            }
-        }
-
-        // Conexi贸n derecha
-        if (actual->derecha != -1) 
-        {
-            int *key = malloc(sizeof(int));
-            *key = actual->derecha;
-            Nodo *vecino = (Nodo *)map_search(grafo, key);
-            free(key);
-    
-            if (vecino != NULL) {
-                map_insert(actual->vecinos, "derecha", vecino);
-            }
-        }
-
-        pair = map_next(grafo);  // No olvides avanzar al siguiente nodo
+        free(key);  // Liberar la memoria temporal
     }
 
-    fclose(archivo);
+    // Conexión abajo
+    if (actual->abajo != -1) 
+    {
+        int *key = malloc(sizeof(int));
+        *key = actual->abajo;
+        MapPair *vecino = (MapPair *)map_search(grafo, key);;
+        
+        if (vecino != NULL) {
+            char *dir_key = strdup("abajo");
+            Nodo * node = vecino->value;
+            map_insert(actual->vecinos, dir_key, node);
+        }
+        free(key);
+    }
+
+    // Conexión izquierda
+    if (actual->izquierda != -1) 
+    {
+        int *key = malloc(sizeof(int));
+        *key = actual->izquierda;
+        MapPair *vecino = (MapPair *)map_search(grafo, key);
+        
+        if (vecino != NULL) {
+            char *dir_key = strdup("izquierda");
+            Nodo * node = vecino->value;
+            map_insert(actual->vecinos, dir_key, node);
+        }
+        free(key);
+    }
+
+    // Conexión derecha
+    if (actual->derecha != -1) 
+    {
+        int *key = malloc(sizeof(int));
+        *key = actual->derecha;
+        MapPair *vecino = (MapPair *)map_search(grafo, key);
+        
+        if (vecino != NULL) {
+            char *dir_key = strdup("derecha");
+            Nodo * node = vecino->value;
+            map_insert(actual->vecinos, dir_key, node);
+        }
+        free(key);
+    }
+
+    pair = map_next(grafo); // Se pasa al siguiente par
+}
+    fclose(archivo); // Se cierra el archivo
 }
 
 //Cada vez que se entra a un nuevo escenario o se realiza una acción, se muestra el siguiente menú:
 void mostrar_estado_actual(EstadoJuego *est_jug){
+
+    //Se muestra la descripcion del escenario y el inventario del jugador
     printf("\n===== Escenario: %s =====\n", est_jug->current->nombre);
     printf("Descripcion escenario: %s\n", est_jug->current->descripcion);
-    printf("Inventario.\n");
+    printf("\nInventario:\n");
     if (!est_jug || !est_jug->Jugador || !est_jug->Jugador->Items) {
         printf("Error: estado o jugador no inicializado correctamente.\n");
         return;
     }
     if(list_size(est_jug->Jugador->Items) == 0){
-        printf("No hay items disponibles :(\n");
+        printf("No tienes ningun item en tu inventario.\n");
     } else {
         Item *item = list_first(est_jug->Jugador->Items);
         int i = 1;
         while (item ){
-            printf(" N° %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
+            printf(" Numero %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
             printf("===============================\n");
             item = list_next(est_jug->Jugador->Items);
             i++;
@@ -392,14 +247,15 @@ void mostrar_estado_actual(EstadoJuego *est_jug){
 
     }
 
-    printf("Items disponibles en escenario: \n");
+    //Se muestra los items disponibles en el escenario
+    printf("\n=====Items disponibles en escenario=====\n");
     if(list_size(est_jug->current->Items) == 0){
-        printf("Inventario vacio :0\n");
+        printf("No hay items disponibles en este lugar.\n");
     } else {
         Item *item = list_first(est_jug->current->Items);
         int i = 1;
         while (item){
-            printf(" N° %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
+            printf("\nNumero %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
             printf("===============================\n");
             item = list_next(est_jug->current->Items);
             i++;
@@ -407,6 +263,7 @@ void mostrar_estado_actual(EstadoJuego *est_jug){
 
     }
 
+    //Se muestra el estado del Jugador
     printf("\n===== Estado del Jugador =====\n");
     printf("Tiempo restante: %d\n", est_jug->Jugador->tiempo);
     printf("Puntaje acumulado: %d\n", est_jug->Jugador->puntuacion);
@@ -420,6 +277,8 @@ void mostrar_estado_actual(EstadoJuego *est_jug){
 }
 
 void recoger_items(EstadoJuego *estado){
+
+    //Se veririfica que haya items en el escenario
     if(list_size(estado->current->Items) == 0){
         printf("No hay items para recoger en escenario.\n");
         return;
@@ -427,12 +286,16 @@ void recoger_items(EstadoJuego *estado){
     printf("Items para recoger en escenario: \n");
     int i = 1;
     Item *item = list_first(estado->current->Items);
+
+    //En caso de haber items en el ecenario se muestran
     while (item){
         printf(" N° %d -- Nombre: %s\n Valor: %d--- Peso: %d\n",i, item->nombre,item->valor, item->peso);
         printf("===============================\n");
         item = list_next(estado->current->Items);
         i++;
-    } 
+    }
+    
+    //El jugador el item que quiere llevarse
     printf("Ingrese numero item recoger: \n");
     int opcion;
     scanf("%d", &opcion);
@@ -459,15 +322,21 @@ void recoger_items(EstadoJuego *estado){
     for(int i = 1; i < opcion; i++){
         item = list_next(estado->current->Items);
     }
+
+    //Se agrega el item a su inventario
     list_popCurrent(estado->current->Items);
     printf("Item %s recogido.\n", item->nombre);
 }
 
 void descartar_items(EstadoJuego *estado){
+
+    //Se veridica que haya items para descartar
     if(list_size(estado->Jugador->Items) == 0){
         printf("No hay items para descartar.\n");
         return;
     } 
+
+    //Se muestran los items que lleva el jugador
     printf("Items inventario: \n");
     int i = 1;
     Item *item = list_first(estado->Jugador->Items);
@@ -477,6 +346,8 @@ void descartar_items(EstadoJuego *estado){
         item = list_next(estado->Jugador->Items);
         i++;
     } 
+
+    //Se selecciona el item que quese va a descartar
     printf("Ingrese numero item descartar: \n");
     int opcion;
     scanf("%d", &opcion);
@@ -493,6 +364,7 @@ void descartar_items(EstadoJuego *estado){
     estado->Jugador->puntuacion -= item2->valor;
     estado->Jugador->tiempo -= 1;
 
+    //Se elimina el item seleccionado
     char guardar[100];
     strcpy(guardar,item2->nombre);
 
@@ -501,81 +373,67 @@ void descartar_items(EstadoJuego *estado){
     printf("Item %s descartado.\n", guardar);
 }
 
+//Funion cuyo objetivo es calcular el tiempo de juego que le queda al usuario
 int calcular_tiempo(int peso){
     return (peso + 9 ) / 10;
 }
 
-/*void mover(EstadoJuego *estado){
+
+
+/* Mueve al jugador a otro escenario */
+void mover(EstadoJuego *estado)
+{
+    //Se le muestran al jugador las dirrecciones validas a las cuale puede ir
+    Nodo *habitacion = estado->current;
+    printf("Direcciones válidas:\n");
+
+    if (habitacion->arriba != -1) printf("arriba\n");
+    if (habitacion->abajo != -1) printf("abajo\n");
+    if (habitacion->izquierda != -1) printf("izquierda\n");
+    if (habitacion->derecha != -1) printf("derecha\n");
+
+    //El jugador ingresa la dirrecion en la que quiere ur
     char direccion[50];
-    printf("Direccion (arriba,abajo,izquierda,derecha): ");
-    fgets(direccion,sizeof(direccion),stdin);
-    direccion[strcspn(direccion,"\n")] = 0;
-    
-    Nodo *vecino = (Nodo *)map_search(estado->current->vecinos, direccion);
-    if(!vecino){
-        printf("Direccion invalida.\n");
+    printf("\nIngrese la dirección deseada: ");
+    scanf("%49s", direccion);
+    getchar(); // Limpiar buffer
+
+    MapPair* vecino = (MapPair*) map_search(habitacion->vecinos, direccion);
+
+    //Si la dirreccion es invalida se le notifica al jugador
+    if (!vecino) {
+        printf("Dirección inválida: '%s'\n", direccion);
+        MapPair* p = map_first(habitacion->vecinos);
+        while (p) {
+            printf(" - %s\n", (char*)p->key);
+            p = map_next(habitacion->vecinos);
+        }
         return;
     }
+
+    Nodo* nodo = (Nodo*) vecino->value;
+
+    //Si la dirrecion es valida se actualiza el estado del jugador
     int tiempo = calcular_tiempo(estado->Jugador->pesoTotal);
-    if(estado->Jugador->tiempo < tiempo ){
-        printf("No hay suficiente tiempo.\n");
+    if (estado->Jugador->tiempo < tiempo) {
+        printf("No hay suficiente tiempo para moverse.\n");
         return;
     }
+
     estado->Jugador->tiempo -= tiempo;
-    estado->current = vecino;
+    estado->current = nodo;
 
-    printf("Se movio a : %s\n", vecino->nombre);
+    //Se muestra a que habitacion se movio el jugador
+    printf("Se movió a: %s\n", nodo->nombre);
 
-    if(vecino->final){
-        printf("Escenario final!\n");
+    if (nodo->final == 1) {
+        printf("¡Escenario final!\n");
         printf("Puntaje final: %d\n", estado->Jugador->puntuacion);
         estado->Jugador->tiempo = 0;
-
-    }
-}*/
-
-void mover(EstadoJuego estado){
-
-    Nodohabitacion = estado->current;
-    printf("Direcciones validas:\n");
-
-    if(habitacion->arriba != - 1)
-        printf("Ariiba\n");
-    if(habitacion->abajo != - 1)
-        printf("Abajo\n");
-    if(habitacion->izquierda != - 1)
-        printf("Izquierda\n");
-    if(habitacion->derecha != - 1)
-        printf("Derecha\n");
-
-    char direccion[50];
-    printf("\nIngrese la direccion deseada: ");
-    fgets(direccion,sizeof(direccion),stdin);
-    direccion[strcspn(direccion,"\n")] = 0;
-
-    Nodo vecino = (Nodo)map_search(estado->current->vecinos, direccion);
-    if(!vecino){
-        printf("Direccion invalida.\n");
-        return;
-    }
-    int tiempo = calcular_tiempo(estado->Jugador->pesoTotal);
-    if(estado->Jugador->tiempo < tiempo ){
-        printf("No hay suficiente tiempo.\n");
-        return;
-    }
-    estado->Jugador->tiempo -= tiempo;
-    estado->current = vecino;
-
-    printf("Se movio a : %s\n", vecino->nombre);
-
-    if(vecino->final == 1){
-        printf("Escenario final!\n");
-        printf("Puntaje final: %d\n", estado->Jugador->puntuacion);
-        estado->Jugador->tiempo = 0;
-
     }
 }
 
+/* Libera la memoria de una lista de ítems */
 void liberar(List *items){
     if (!items) return;
 
@@ -590,12 +448,15 @@ void liberar(List *items){
 
 
 
+/* Reinicia el estado del juego */
 EstadoJuego *reiniciar(Nodo *inicio, EstadoJuego *currentPlay) {
+
+    //Se libera y borra todo el progreso realizado hasta el momento
     liberar(currentPlay->Jugador->Items);
     free(currentPlay->Jugador);
     free(currentPlay);
     
-    
+    // Crear nuevo estado
     EstadoJuego *estado = malloc(sizeof(EstadoJuego));
     Jugador *player = malloc(sizeof(Jugador));
     player->Items = list_create();
@@ -610,7 +471,10 @@ EstadoJuego *reiniciar(Nodo *inicio, EstadoJuego *currentPlay) {
 
 
 
+/* Inicia una partida individual */
 void iniciarPartida(Map *grafo, Nodo *inicio) {
+
+    // Crear jugador y estado inicial
     Jugador *player = malloc(sizeof(Jugador));
     player->Items = list_create();
     player->tiempo = 10;
@@ -622,14 +486,17 @@ void iniciarPartida(Map *grafo, Nodo *inicio) {
     estado->Jugador = player;
     int opcion;
     int salir = 0;
+
+    // Bucle principal del juego
     while(!salir && player->tiempo > 0){
         mostrar_estado_actual(estado);
-        //arreglar
-        //ver eso de listclean y listPop
+
+        //Se muestran las opciones que puede realiazr el jugador
         printf("\nOpciones:\n1. Recoger Item\n2. Descartar Item\n3. Avanzar\n4. Reiniciar\n5. Salir\n");
         scanf("%d",&opcion);
         getchar();
 
+        //El jugador debe de eleigir una entre las 5 opciones
         switch (opcion) {
             case 1:
                  recoger_items(estado);
@@ -659,55 +526,46 @@ void iniciarPartida(Map *grafo, Nodo *inicio) {
     if(player->tiempo <= 0){
         printf("Se acabo el tiempo.\n");
     }
+    //Si se agota el tiempo se le notifica al jugador
     printf("Fin del juego. Tiempo agotado o final alcanzado.\n");
     liberar(player->Items);
     free(player);
     free(estado);
 }
-int pedir_id_escenario_inicial(Map *grafo) {
-    printf("Escenarios disponibles:\n");
-    MapPair *p = map_first(grafo);
-    while (p) {
-        Nodo *n = (Nodo *)p->value;
-        int id = *(int *)p->key;
-        printf("ID (key): %d - ID (nodo): %d - Nombre: %s\n", id, n->id, n->nombre);
-        p = map_next(grafo);
-    }
 
-    int id_elegido;
-    printf("Ingrese el ID del escenario inicial: ");
-    scanf("%d", &id_elegido);
-    getchar();  // limpiar buffer
 
-    return id_elegido;
-}
+
+
 
 
 void iniciarPartidaMultijador(Map *grafo, Nodo *inicio){
+    //reserva memoria para jugar en multijuador
     EstadoMultijugador *estado = malloc(sizeof(EstadoMultijugador));
-
+    //reserva memoria y configura al jugador 1
     estado->jugador1 = malloc(sizeof(Jugador));
-    estado->jugador1->Items = list_create();
-    estado->jugador1->tiempo = 10;
-    estado->jugador1->puntuacion = 0;
-    estado->jugador1->pesoTotal = 0;
-
+    estado->jugador1->Items = list_create(); //incializa la lista de items
+    estado->jugador1->tiempo = 10;     //tiempo
+    estado->jugador1->puntuacion = 0; //puntuacion
+    estado->jugador1->pesoTotal = 0; //peso total
+    //reserva memoria y configura jugador 2
     estado->jugador2 = malloc(sizeof(Jugador));
     estado->jugador2->Items = list_create();
     estado->jugador2->tiempo = 10;
     estado->jugador2->puntuacion = 0;
     estado->jugador2->pesoTotal = 0;
-
+    //establece nodo incial para ambos jugadores
     estado->nodo_j1 = inicio;
     estado->nodo_j2 = inicio;
+    //controlar la salida del juego empieza con 0
     estado->turno_actual = 0;
 
-    int salir = 0;
+    int salir = 0; //salir del bucle (variable)
 
     while(!salir){
         Jugador *jug;
         Nodo *nodo;
-        if(estado->turno_actual = 0) {
+        //que jugador esta en turno y asigna punteros
+        if(estado->turno_actual == 0) {
             printf("\n=== Turno del jugador 1 ===\n");
             jug = estado->jugador1;
             nodo = estado->nodo_j1;
@@ -716,19 +574,20 @@ void iniciarPartidaMultijador(Map *grafo, Nodo *inicio){
             jug = estado->jugador2;
             nodo = estado->nodo_j2;
         }
+        //un estado temporal con jugador y su nodo actual
         EstadoJuego temp;
         temp.Jugador = jug;
         temp.current = nodo;
 
-        mostrar_estado_actual(&temp);
+        mostrar_estado_actual(&temp); //muestar estado actual
 
-        int acciones = 2;
+        int acciones = 2; //acciones que puede hacer
         while(acciones > 0 && jug->tiempo > 0){
-            printf("\nOpciones:\n1. Recoger Item\n2. Descartar Item\n3. Avanzar\n4. Terminar Turno\n");
+            printf("\nOpciones:\n1. Recoger Item\n2. Descartar Item\n3. Avanzar\n4. Terminar Turno\n5. Salir del Juego\n\n");
             int opcion;
             scanf("%d",&opcion);
             getchar();
-
+            //llama a las funciones 
             switch (opcion){
                 case  1:
                     recoger_items(&temp);
@@ -755,11 +614,16 @@ void iniciarPartidaMultijador(Map *grafo, Nodo *inicio){
                 case 4:
                     acciones = 0;
                     break;
-            
+                case 5:
+                    printf("Juego terminado por el jugador.\n");
+                    salir = 1;
+                    acciones = 0;
+                    break;
                 default:
                     printf("Opcion no valida.\n");
             }
         }
+        //si ambos estan sin tiempo se dice 
         if( estado->jugador1->tiempo <= 0 && estado->jugador2->tiempo <= 0){
             printf("\nFin del juego. Ambos jugadores terminaron.\n");
             printf("Jugador 1 - Puntaje: %d\n", estado->jugador1->puntuacion);
@@ -768,7 +632,7 @@ void iniciarPartidaMultijador(Map *grafo, Nodo *inicio){
         }
         estado->turno_actual = (estado->turno_actual + 1) % 2;
     }
-
+    //limpia la memoria al finalizar 
     liberar(estado->jugador1->Items);
     liberar(estado->jugador2->Items);
     free(estado->jugador1);
@@ -782,20 +646,21 @@ void iniciarPartidaMultijador(Map *grafo, Nodo *inicio){
 
 
 
-
-
-int main() {
+iint main() {
+    //Se inicializan las tdas para el correcto funcionamiento del programa
     Map *grafo = map_create(int_equal);
     Nodo *esc = NULL;
     int opcion;
-    printf("Ingresar opcion: \n");
-
+    
     do {
+        //Se muestra el menu principal y guarda la opcion que escoge el usuario
         mostrarMenuPrincipal();
         scanf("%d", &opcion);
         getchar();
 
-        switch (opcion){
+        switch (opcion) {
+
+            //Si se escoge la opcion uno se carga el laberinto
             case 1:
                 leer_escenarios(grafo);
                 MapPair *p = map_first(grafo);
@@ -806,44 +671,39 @@ int main() {
                     printf("Laberinto cargado pero sin nodos.\n");
                 }
                 break;
-                //printf("Laberinto cargado correctamente.\n");
-                //break;
-            case 2:
-                /*if (grafo == NULL || map_first(grafo) == 0) {
-                    printf("Primero debes cargar el laberinto.\n");
+        //Se inicia una partida individual
+          case 2:
+          if (esc == NULL) {
+                    printf("Primero debes cargar el laberinto (Opción 1).\n");
                 } else {
-                    int id = pedir_id_escenario_inicial(grafo);
-                    int *keyBusqueda = malloc(sizeof(int));
-                    *keyBusqueda = id;
-                    Nodo *escenario_inicial = (Nodo *)map_search(grafo, keyBusqueda);
-                    free(keyBusqueda);
-
-                    if (!escenario_inicial) {
-                        printf("No existe un escenario con ese ID.\n");
-                    } else {
-                        iniciarPartida(grafo, escenario_inicial);
-                    }
-                }*/
-                iniciarPartida(grafo, esc);
+                    iniciarPartida(grafo, esc);
+                }
                 break;
+            //Se inicia un partida multijugador      
             case 3:
-                if(grafo == NULL || map_first(grafo) == 0){
-                    printf("Debes cargar el laberinto.\n");
-                }else {
+                if (esc == NULL) {
+                    printf("Debes cargar el laberinto primero (Opción 1).\n");
+                } else {
                     iniciarPartidaMultijador(grafo, esc);
                 }
                 break;
+            //Se sale del juego y de la terminal
             case 4:
                 printf("Saliendo del juego...\n");
                 break;
+            //Cualquier otra opcion no valida es descatada y aparece un mensjae
             default:
-                printf("Opcion no valida.\n");
+                printf("Opción no válida.\n");
         }
+
+        if (opcion != 4) {
+            presioneTeclaParaContinuar();
+        }
+        
     } while (opcion != 4);
 
-  return 0;
+    return 0;
 }
-
 
 
 
