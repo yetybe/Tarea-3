@@ -646,7 +646,7 @@ void iniciarPartidaMultijador(Map *grafo, Nodo *inicio){
 
 
 
-iint main() {
+int main() {
     //Se inicializan las tdas para el correcto funcionamiento del programa
     Map *grafo = map_create(int_equal);
     Nodo *esc = NULL;
